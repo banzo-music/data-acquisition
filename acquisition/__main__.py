@@ -3,13 +3,18 @@ import time
 from typing import List, Tuple
 
 import pandas as pd
+from spotipy import Spotify
+from spotipy.oauth2 import SpotifyClientCredentials
 
-from .spotifynetwork import Network
+from .network import Network
 from .artist import Artist
 
 
 def main():
+	spotify = Spotify(auth_manager=SpotifyClientCredentials())
+
 	network = Network(
+		spotify=spotify,
 		audio_features=[
 			"danceability", "energy", "key", "loudness", "mode", "speechiness", "acousticness", "instrumentalness",
 			"liveness", "valence", "tempo", "duration_ms", "time_signature"

@@ -2,18 +2,18 @@ import json
 import traceback
 from typing import List, Dict, Any, Tuple
 
-import spotipy
+from spotipy import Spotify
 import networkx as nx
 import pandas as pd
 
-from artist import Artist
-from playlist import Playlist
-from track import Track
+from .artist import Artist
+from .playlist import Playlist
+from .track import Track
 
 
 class Network:
-	def __init__(self, audio_features: List[str], max_tracks: int):
-		self.spotify = spotipy.Spotify(auth_manager=spotipy.oauth2.SpotifyClientCredentials())
+	def __init__(self, spotify: Spotify, audio_features: List[str], max_tracks: int):
+		self.spotify = spotify
 		self.graph = nx.Graph()
 		self.audio_features = audio_features
 		self.max_tracks = max_tracks
@@ -49,6 +49,7 @@ class Network:
 	def top_tracks(self, artist: Artist, seen: bool = False) -> List[Tuple[Track, List[Artist]]]:
 		try:
 			results = self.spotify.artist_top_tracks(artist.id)
+			print(results)
 		except Exception as e:
 			print(
 				f"exception while getting top tracks, skipping artist ({artist.name}):\n",
