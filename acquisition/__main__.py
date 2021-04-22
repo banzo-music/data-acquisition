@@ -1,15 +1,19 @@
-import json, os, time
+import os
+import time
 from typing import List, Tuple
 
-from .spotifynetwork import Track, Network, Artist
-
-import networkx as nx
 import pandas as pd
+
+from .spotifynetwork import Network
+from .artist import Artist
 
 
 def main():
 	network = Network(
-		audio_features=["danceability", "energy", "key", "loudness", "mode", "speechiness", "acousticness", "instrumentalness", "liveness", "valence", "tempo", "duration_ms", "time_signature"],
+		audio_features=[
+			"danceability", "energy", "key", "loudness", "mode", "speechiness", "acousticness", "instrumentalness",
+			"liveness", "valence", "tempo", "duration_ms", "time_signature"
+		],
 		max_tracks=50
 	)
 
@@ -19,9 +23,9 @@ def main():
 
 	if vertices_path and edges_path:
 		print("Loading graph from file")
-		V = pd.read_csv(vertices_path)
-		E = pd.read_csv(edges_path)
-		network.from_dataframe(V, E)
+		vertices = pd.read_csv(vertices_path)
+		edges = pd.read_csv(edges_path)
+		network.from_dataframe(vertices, edges)
 		print(f"Loaded {len(network.graph.nodes)} nodes and {len(network.graph.edges)}")
 
 	print("Adding new tracks and artists via seed playlists")
@@ -32,11 +36,11 @@ def main():
 		print(f"Exploring via playlist: {playlist.name} ({playlist.id})")
 		add_artists(network, playlist.get_artists(), 0, 2)
 
-		V, E = network.to_dataframe()
+		vertices, edges = network.to_dataframe()
 
 		print(f"Writing {len(network.graph.nodes())} nodes and {len(network.graph.edges())} edges to file")
-		V.to_csv(f"vertices_{name}.csv", index=False)
-		E.to_csv(f"edges_{name}.csv", index=False)
+		vertices.to_csv(f"vertices_{name}.csv", index=False)
+		edges.to_csv(f"edges_{name}.csv", index=False)
 		print(f"Completed: {time.time() - start_time}")
 
 
@@ -49,22 +53,31 @@ def add_artists(network: Network, seed_artists: List[Artist], curr_depth: int, m
 	
 	next_seed_artists = []
 	for seed_artist in unseen_seed_artists:
-		found_tracks = network.search_tracks(seed_artist.name)
-		top_tracks = network.top_tracks(seed_artist, True)
-		network.get_audio_features([tup[0] for tup in found_tracks + top_tracks])
-
-		related_artists = network.related_artists(seed_artist)
-		collaborators = {}
-		for track, artists in found_tracks + top_tracks:
-			network.put_track(track, artists)
-			for artist in artists:
-				collaborators[artist.name] = artist
-
-		unseen_associated_artists = network.unseen_artists(related_artists + list(collaborators.values()))
-		next_seed_artists += unseen_associated_artists
-		print(f"Tracks: {len(found_tracks + top_tracks)}\tAssociated artists: {len(unseen_associated_artists)}\tArtist: {seed_artist.name}")
+		next_seed_artists += add_artist(network, seed_artist)
 
 	add_artists(network, next_seed_artists, curr_depth+1, max_depth)
+
+
+def add_artist(network: Network, seed_artist: Artist):
+	found_tracks = network.search_tracks(seed_artist.name)
+	top_tracks = network.top_tracks(seed_artist, True)
+	network.get_audio_features([tup[0] for tup in found_tracks + top_tracks])
+
+	related_artists = network.related_artists(seed_artist)
+	collaborators = {}
+	for track, artists in found_tracks + top_tracks:
+		network.put_track(track, artists)
+		for artist in artists:
+			collaborators[artist.name] = artist
+
+	unseen_associated_artists = network.unseen_artists(related_artists + list(collaborators.values()))
+	print(
+		f"Tracks: {len(found_tracks + top_tracks)}\t",
+		f"Associated artists: {len(unseen_associated_artists)}\t",
+		f"Artist: {seed_artist.name}"
+	)
+
+	return unseen_associated_artists
 
 
 def read_lines(path: str) -> List[Tuple[str, str]]:

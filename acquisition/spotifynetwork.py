@@ -1,53 +1,14 @@
-import json, os
+import json
+import traceback
 from typing import List, Dict, Any, Tuple
+
 import spotipy
 import networkx as nx
 import pandas as pd
 
-class Track:
-	def __init__(self, name: str, id: str, album: str, album_type: str, attr: Dict[str, Any]={}):
-		self.id = id
-		self.name = name
-		self.album = album
-		self.album_type = album_type
-		self.attr = attr
-		self.node_type = 'track'
-
-	def set_attrs(self, attrs: Dict[str, Any]):
-		self.attr = attrs
-
-	def __eq__(self, other):
-		return self.id == other.id and self.name == other.name and self.album == other.album and self.album_type == other.album_type
-
-	def __hash__(self):
-		return hash(('id', self.id, 'name', self.name))
-
-
-class Artist:
-	def __init__(self, id: str, name: str, attr: Dict[str, Any]={}):
-		self.id = id
-		self.name = name
-		self.attr = attr
-		self.node_type = 'artist'
-
-	def __eq__(self, other):
-		return self.id == other.id and self.name == other.name
-
-	def __hash__(self):
-		return hash(('id', self.id, 'name', self.name))
-
-
-class Playlist:
-	def __init__(self, id: str, name: str, entries: List[Tuple[Track, List[Artist]]]):
-		self.id = id
-		self.name = name
-		self.entries = entries
-
-	def get_artists(self):
-		temp = []
-		for track, artists in self.entries:
-			temp += artists
-		return list(set(temp))
+from artist import Artist
+from playlist import Playlist
+from track import Track
 
 
 class Network:
@@ -57,14 +18,19 @@ class Network:
 		self.audio_features = audio_features
 		self.max_tracks = max_tracks
 
-	def search_tracks(self, artist_name: str, seen: bool=False) -> List[Tuple[Track, List[Artist]]]:
+	def search_tracks(self, artist_name: str, seen: bool = False) -> List[Tuple[Track, List[Artist]]]:
 		tracks = {}
-		limit = 50; offset = 0; total = 1
-		while(offset <= total and offset <= self.max_tracks):
+		limit = 50
+		offset = 0
+		total = 1
+		while offset <= total and offset <= self.max_tracks:
 			try:
 				results = self.spotify.search(artist_name, type='track', limit=limit, offset=offset)
 			except Exception as e:
-				print(f"exception while searching, skipping batch of tracks:\n{e}")
+				print(
+					f"exception while searching, skipping batch of tracks:\n",
+					format_traceback(e)
+				)
 				offset += limit
 				continue
 
@@ -80,11 +46,14 @@ class Network:
 
 		return list(tracks.values())
 
-	def top_tracks(self, artist: Artist, seen: bool=False) -> List[Tuple[Track, List[Artist]]]:
+	def top_tracks(self, artist: Artist, seen: bool = False) -> List[Tuple[Track, List[Artist]]]:
 		try:
 			results = self.spotify.artist_top_tracks(artist.id)
 		except Exception as e:
-			print(f"exception while getting top tracks, skipping artist ({artist.name}):\n{e}")
+			print(
+				f"exception while getting top tracks, skipping artist ({artist.name}):\n",
+				format_traceback(e)
+			)
 			return []
 
 		tracks = {}
@@ -107,11 +76,14 @@ class Network:
 					self.graph.add_node(artist.id, artist=artist)
 				self.graph.add_edge(track.id, artist.id)
 
-	def related_artists(self, artist: Artist, seen: bool=False) -> List[Artist]:
+	def related_artists(self, artist: Artist, seen: bool = False) -> List[Artist]:
 		try:
 			results = self.spotify.artist_related_artists(artist.id)
 		except Exception as e:
-			print(f"exception while getting related artists, skipping artist ({artist.name}):\n{e}")
+			print(
+				f"exception while getting related artists, skipping artist ({artist.name}):\n",
+				format_traceback(e)
+			)
 			return []
 
 		if results['artists']:
@@ -131,7 +103,10 @@ class Network:
 			try:
 				results = self.spotify.audio_features(tracks_map.keys())
 			except Exception as e:
-				print(f"exception while getting audio features, skipping batch of tracks:\n{e}")
+				print(
+					f"exception while getting audio features, skipping batch of tracks:\n",
+					format_traceback(e)
+				)
 				continue
 
 			if len(results) <= 0:
@@ -150,18 +125,26 @@ class Network:
 		try:
 			playlist = self.spotify.playlist(playlist_id=playlist_id)
 		except Exception as e:
-			print(f"exception while getting playlist, skipping playlist ({playlist_id}):\n{e}")
-			return Playlist(id='', name='', entries=[])
+			print(
+				f"exception while getting playlist, skipping playlist ({playlist_id}):\n",
+				format_traceback(e)
+			)
+			return Playlist(playlist_id='', name='', entries=[])
 
 		playlist_name = playlist['name']
 		total_tracks = playlist['tracks']['total']
 
-		entries = {}; offset = 0; limit = 50
-		while(offset <= total_tracks):
+		entries = {}
+		offset = 0
+		limit = 50
+		while offset <= total_tracks:
 			try:
 				results = self.spotify.playlist_tracks(playlist_id=playlist_id, offset=offset, limit=limit)
 			except Exception as e:
-				print(f"exception while getting playlist tracks, skipping batch of tracks ({playlist_id}):\n{e}")
+				print(
+					f"exception while getting playlist tracks, skipping batch of tracks ({playlist_id}):\n",
+					format_traceback(e)
+				)
 				offset += limit
 				continue
 
@@ -178,22 +161,21 @@ class Network:
 					)
 
 		return Playlist(
-			id=playlist_id,
+			playlist_id=playlist_id,
 			name=playlist_name,
 			entries=list(entries.values())
 		)			
 
 	def to_dataframe(self) -> (pd.DataFrame, pd.DataFrame):
-		artists = nx.get_node_attributes(self.graph, 'artist')
 		tracks = [track.__dict__ for track in nx.get_node_attributes(self.graph, 'track').values()]
 		artists = [artist.__dict__ for artist in nx.get_node_attributes(self.graph, 'artist').values()]
-		V = pd.json_normalize(tracks + artists)
-		E = nx.to_pandas_edgelist(self.graph)
-		return V, E
+		vertices = pd.json_normalize(tracks + artists)
+		edges = nx.to_pandas_edgelist(self.graph)
+		return vertices, edges
 
-	def from_dataframe(self, V: pd.DataFrame, E: pd.DataFrame):
-		G = nx.from_pandas_edgelist(E)
-		records = V.to_dict('records')
+	def from_dataframe(self, vertices: pd.DataFrame, edges: pd.DataFrame):
+		graph = nx.from_pandas_edgelist(edges)
+		records = vertices.to_dict('records')
 		for record in records:
 			attr = {}
 			for k, v in record.items():
@@ -201,21 +183,31 @@ class Network:
 					attr[k.replace("attr.", "")] = v
 
 			if record['node_type'] == 'track':
-				G.add_node(record['id'], track=Track(id=record['id'], name=record['name'], album=record['album'], album_type=record['album_type'], attr=attr))
+				graph.add_node(record['id'], track=Track(
+					track_id=record['id'],
+					name=record['name'],
+					album=record['album'],
+					album_type=record['album_type'],
+					attr=attr
+				))
 			elif record['node_type'] == 'artist':
-				G.add_node(record['id'], artist=Artist(id=record['id'], name=record['name'], attr=attr))
+				graph.add_node(record['id'], artist=Artist(
+					artist_id=record['id'],
+					name=record['name'],
+					attr=attr
+				))
 			else:
 				print("weird node found; skipping")
 				continue
 
-		self.graph = G
+		self.graph = graph
 
-	def unseen_artists(self, artists: List[Artist]):
+	def unseen_artists(self, artists: List[Artist]) -> List[Artist]:
 		unique_artists = list(set(artists))
 		seen_artists = nx.get_node_attributes(self.graph, 'seen')
 		return [artist for artist in unique_artists if artist.id not in seen_artists]
 
-	def artist_from_response(self, response: Dict[str, Any], seen: bool=False) -> Artist:
+	def artist_from_response(self, response: Dict[str, Any], seen: bool = False) -> Artist:
 		attr = {
 			'popularity': response.get('popularity'),
 			'genres': response.get('genres')
@@ -224,13 +216,18 @@ class Network:
 		if seen or response['id'] in nx.get_node_attributes(self.graph, 'seen'):
 			attr['seen'] = True
 
-		artist = Artist(id=response['id'], name=response['name'], attr=attr)
+		artist = Artist(artist_id=response['id'], name=response['name'], attr=attr)
 		return artist
 
-	def track_from_response(self, response: Dict[str, Any]) -> Track:
+	@staticmethod
+	def track_from_response(response: Dict[str, Any]) -> Track:
 		return Track(
-			id=response['id'],
+			track_id=response['id'],
 			name=response['name'],
 			album=response['album']['name'],
 			album_type=response['album']['album_type']
 		)
+
+
+def format_traceback(e: Exception) -> str:
+	json.dumps(traceback.format_tb(e.__traceback__), indent=3)
