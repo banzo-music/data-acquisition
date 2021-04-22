@@ -16,3 +16,7 @@ pull-spotify:	## recursively pull spotify data via seed playlists
 		-e SPOTIPY_CLIENT_SECRET=${SPOTIPY_CLIENT_SECRET} \
 		pull-spotify 
 # 		-e IMAGE_VERSION=0.0.1 \
+
+.PHONY: test
+test:   ## run tests
+	docker-compose run test
