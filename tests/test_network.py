@@ -1,4 +1,3 @@
-import pytest
 from unittest.mock import Mock
 
 from acquisition.track import Track
@@ -104,10 +103,24 @@ class TestNetworkTopTracks:
         assert tracks == actual
 
     def test_top_tracks_sad(self):
-        mock_spotify = Mock()
-        mock_spotify.artist_top_tracks.side_effect = Exception("spotify machine broke")
-
-        network = Network(audio_features=["a", "b"], max_tracks=10, spotify=mock_spotify)
+        network = Network(audio_features=["a", "b"], max_tracks=10, spotify=Mock())
+        network.spotify.artist_top_tracks.side_effect = Exception("spotify machine broke")
 
         assert [] == network.top_tracks(Artist(artist_id="0001", name="Noname"))
-        mock_spotify.artist_top_tracks.assert_called_once_with("0001")
+        network.spotify.artist_top_tracks.assert_called_once_with("0001")
+
+    def test_put_track(self):
+        network = Network(audio_features=["a", "b"], max_tracks=10, spotify=Mock())
+
+        track, artists = tracks[0]
+        nodes = ["000", "0001", "0002", "0003"]         # track ID and all artist IDs
+        edges = [("000", "0001"), ("000", "0002"), ("000", "0003")]     # track with an edge connecting it to each artist
+
+        assert [] == list(network.graph.nodes)
+        network.put_track(track, artists)
+        assert sorted(nodes) == sorted(list(network.graph.nodes))
+        assert sorted(edges) == sorted(list(network.graph.edges))
+
+        network.put_track(track, artists)
+        assert sorted(nodes) == sorted(list(network.graph.nodes))
+        assert sorted(edges) == sorted(list(network.graph.edges))
