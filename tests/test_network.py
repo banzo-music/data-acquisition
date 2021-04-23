@@ -1,3 +1,4 @@
+import copy
 from unittest.mock import Mock
 
 from acquisition.track import Track
@@ -5,7 +6,7 @@ from acquisition.artist import Artist
 from acquisition.network import Network
 
 
-response = {
+tracks_response = {
     "tracks": [
         {
             "name": "Diddy Bop",
@@ -91,16 +92,43 @@ tracks = [
     )
 ]
 
+artists_response = {
+    "artists": [
+        {
+            "id": "0002",
+            "name": "Cam O'bi"
+        },
+        {
+            "id": "0003",
+            "name": "Raury"
+        },
+        {
+            "id": "2222",
+            "name": "Joseph Chilliams"
+        },
+        {
+            "id": "2223",
+            "name": "Ravyn Lenae"
+        }
+    ]
+}
+
+artists = [
+    Artist(artist_id="0002", name="Cam O'bi"),
+    Artist(artist_id="0003", name="Raury"),
+    Artist(artist_id="2222", name="Joseph Chilliams"),
+    Artist(artist_id="2223", name="Ravyn Lenae")
+]
+
 
 class TestNetworkTopTracks:
     def test_top_tracks(self):
-        mock_spotify = Mock()
-        mock_spotify.artist_top_tracks.return_value = response
-
-        network = Network(audio_features=["a", "b"], max_tracks=10, spotify=mock_spotify)
+        network = Network(audio_features=["a", "b"], max_tracks=10, spotify=Mock())
+        network.spotify.artist_top_tracks.return_value = tracks_response
 
         actual = network.top_tracks(Artist(artist_id="0001", name="Noname"))
         assert tracks == actual
+        network.spotify.artist_top_tracks.assert_called_once_with("0001")
 
     def test_top_tracks_sad(self):
         network = Network(audio_features=["a", "b"], max_tracks=10, spotify=Mock())
@@ -114,13 +142,90 @@ class TestNetworkTopTracks:
 
         track, artists = tracks[0]
         nodes = ["000", "0001", "0002", "0003"]         # track ID and all artist IDs
-        edges = [("000", "0001"), ("000", "0002"), ("000", "0003")]     # track with an edge connecting it to each artist
+        edges = [("000", "0001"), ("000", "0002"), ("000", "0003")]     # track has edge to each artist
 
+        # graph contains no nodes or edges
         assert [] == list(network.graph.nodes)
+        assert [] == list(network.graph.edges)
+
+        # put track; graph contains correct nodes and edges
         network.put_track(track, artists)
         assert sorted(nodes) == sorted(list(network.graph.nodes))
         assert sorted(edges) == sorted(list(network.graph.edges))
 
+        # put same track; graph contains same nodes and edges
         network.put_track(track, artists)
         assert sorted(nodes) == sorted(list(network.graph.nodes))
         assert sorted(edges) == sorted(list(network.graph.edges))
+
+    def test_related_artists(self):
+        network = Network(audio_features=["a", "b"], max_tracks=10, spotify=Mock())
+        network.spotify.artist_related_artists.return_value = artists_response
+        assert artists == network.related_artists(Artist(artist_id="0001", name="Noname"))
+        network.spotify.artist_related_artists.assert_called_once_with("0001")
+
+    def test_related_artists_sad(self):
+        network = Network(audio_features=["a", "b"], max_tracks=10, spotify=Mock())
+        network.spotify.artist_related_artists.side_effect = Exception("spotify machine broke")
+        assert [] == network.related_artists(Artist(artist_id="0001", name="Noname"))
+        network.spotify.artist_related_artists.assert_called_once_with("0001")
+
+    def test_related_artists_none(self):
+        network = Network(audio_features=["a", "b"], max_tracks=10, spotify=Mock())
+        network.spotify.artist_related_artists.return_value = {"artists": []}
+        assert [] == network.related_artists(Artist(artist_id="0001", name="Noname"))
+        network.spotify.artist_related_artists.assert_called_once_with("0001")
+
+    def test_audio_features(self):
+        # setup
+        tracks_with_audio_features_response = [
+            {"id": "000", "poetic": 1.0, "excellence": 1.0},
+            {"id": "111", "true": 1.0, "bop": 1.0},
+            {"id": "222", "let's": 1.0, "gooo": 1.0}
+        ]
+
+        tracks_only = [track[0] for track in tracks]
+
+        tracks_with_audio_features = copy.deepcopy(tracks_only)
+        tracks_with_audio_features[0].set_attrs({"poetic": 1.0, "excellence": 1.0})
+        tracks_with_audio_features[1].set_attrs({"bop": 1.0})
+
+        network = Network(audio_features=["poetic", "excellence", "bop"], max_tracks=10, spotify=Mock())
+        network.spotify.audio_features.return_value = tracks_with_audio_features_response
+
+        # test
+        network.get_audio_features(tracks_only)
+
+        # check correctness
+        assert tracks_with_audio_features == tracks_only
+        network.spotify.audio_features.assert_called_once_with({"000": True, "111": True, "222": True}.keys())
+
+    def test_audio_features_sad(self):
+        # setup
+        network = Network(audio_features=["poetic", "excellence", "bop"], max_tracks=10, spotify=Mock())
+        network.spotify.audio_features.side_effect = Exception("spotify machine broke")
+
+        tracks_only = [track[0] for track in tracks]
+        expected = copy.deepcopy(tracks_only)
+
+        # test
+        network.get_audio_features(tracks_only)
+
+        # check correctness
+        assert expected == tracks_only
+        network.spotify.audio_features.assert_called_once_with({"000": True, "111": True, "222": True}.keys())
+
+    def test_audio_features_single(self):
+        # setup
+        network = Network(audio_features=["poetic", "excellence", "bop"], max_tracks=10, spotify=Mock())
+        network.spotify.audio_features.return_value = []
+
+        single_track = tracks[0][0]
+        expected = copy.deepcopy(single_track)
+
+        # test
+        network.get_audio_features([single_track])
+
+        # check correctness
+        assert expected == single_track
+        network.spotify.audio_features.assert_called_once_with({"000": True}.keys())

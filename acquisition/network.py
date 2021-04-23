@@ -49,7 +49,6 @@ class Network:
 	def top_tracks(self, artist: Artist, seen: bool = False) -> List[Tuple[Track, List[Artist]]]:
 		try:
 			results = self.spotify.artist_top_tracks(artist.id)
-			print(results)
 		except Exception as e:
 			print(
 				f"exception while getting top tracks, skipping artist ({artist.name}):\n",
@@ -231,4 +230,4 @@ class Network:
 
 
 def format_traceback(e: Exception) -> str:
-	json.dumps(traceback.format_tb(e.__traceback__), indent=3)
+	return json.dumps(traceback.format_tb(e.__traceback__), indent=3)
