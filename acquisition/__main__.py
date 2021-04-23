@@ -43,7 +43,7 @@ def main():
         print(f"Exploring via playlist: {playlist.name} ({playlist.id})")
         add_artists(network, playlist.get_artists(), 0, 2)
 
-        print(f"Writing {len(network.graph.nodes())} nodes and {len(network.graph.edges())} edges to file")
+        print(f"Writing {len(network.graph.nodes)} nodes and {len(network.graph.edges())} edges to file")
         vertices, edges = network.to_dataframe()
         vertices.to_csv(f"vertices_{name}.csv", index=False)
         edges.to_csv(f"edges_{name}.csv", index=False)
@@ -72,11 +72,11 @@ def add_artist(network: Network, seed_artist: Artist):
     related_artists = network.get_related_artists(seed_artist)
     collaborators = {}
     for track, artists in found_tracks + top_tracks:
-        network.put_track(track, artists)
+        network.graph.put_track(track, artists)
         for artist in artists:
             collaborators[artist.name] = artist
 
-    unseen_associated_artists = network.unseen_artists(related_artists + list(collaborators.values()))
+    unseen_associated_artists = network.graph.unseen_artists(related_artists + list(collaborators.values()))
     print(
         f"Tracks: {len(found_tracks + top_tracks)}\t",
         f"Associated artists: {len(unseen_associated_artists)}\t",

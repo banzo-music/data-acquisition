@@ -7,19 +7,19 @@ import networkx as nx
 import pandas as pd
 
 from .artist import Artist
+from .graph import Graph
 from .playlist import Playlist
 from .track import Track
 
 
 class Network:
 	def __init__(self, spotify: Spotify, audio_features: List[str], max_tracks: int, graph: nx.Graph = None):
+		self.graph = Graph(graph)
 		self.spotify = spotify
-		self.graph = nx.Graph()
-		if graph:
-			self.graph = graph
 		self.audio_features = audio_features
 		self.max_tracks = max_tracks
 
+	# TODO: test this
 	@classmethod
 	def from_dataframe(
 			cls,
@@ -29,7 +29,7 @@ class Network:
 			vertices: pd.DataFrame,
 			edges: pd.DataFrame
 	):
-		graph = nx.from_pandas_edgelist(edges)
+		graph = Graph(nx.from_pandas_edgelist(edges))
 		records = vertices.to_dict('records')
 		for record in records:
 			attr = {}
@@ -57,6 +57,7 @@ class Network:
 
 		return cls(graph=graph, spotify=spotify, audio_features=audio_features, max_tracks=max_tracks)
 
+	# TODO: test this
 	def search_tracks(self, artist_name: str, seen: bool = False) -> List[Tuple[Track, List[Artist]]]:
 		tracks = {}
 		limit = 50
@@ -103,17 +104,6 @@ class Network:
 			)
 
 		return list(tracks.values())
-
-	def put_track(self, track: Track, artists: List[Artist]):
-		if track.id not in self.graph.nodes():
-			self.graph.add_node(track.id, track=track)
-			for artist in artists:
-				seen = artist.attr.get('seen')
-				if seen:
-					self.graph.add_node(artist.id, artist=artist, seen=seen)
-				else:
-					self.graph.add_node(artist.id, artist=artist)
-				self.graph.add_edge(track.id, artist.id)
 
 	def get_related_artists(self, artist: Artist, seen: bool = False) -> List[Artist]:
 		try:
@@ -163,6 +153,7 @@ class Network:
 					audio_features[name] = result.get(name)
 				tracks_map[track_id].set_attrs(audio_features)
 
+	# TODO: test this
 	def get_playlist(self, playlist_id: str) -> Union[Playlist, None]:
 		try:
 			playlist = self.spotify.playlist(playlist_id=playlist_id)
@@ -200,6 +191,7 @@ class Network:
 			entries=list(entries.values())
 		)
 
+	# TODO: test this
 	def get_playlist_tracks(self, playlist_id: str, offset: int, limit: int) -> Dict[str, Any]:
 		try:
 			return self.spotify.playlist_tracks(playlist_id=playlist_id, offset=offset, limit=limit)
@@ -210,18 +202,6 @@ class Network:
 			)
 			return {}
 
-	def to_dataframe(self) -> (pd.DataFrame, pd.DataFrame):
-		tracks = [track.__dict__ for track in nx.get_node_attributes(self.graph, 'track').values()]
-		artists = [artist.__dict__ for artist in nx.get_node_attributes(self.graph, 'artist').values()]
-		vertices = pd.json_normalize(tracks + artists)
-		edges = nx.to_pandas_edgelist(self.graph)
-		return vertices, edges
-
-	def unseen_artists(self, artists: List[Artist]) -> List[Artist]:
-		unique_artists = list(set(artists))
-		seen_artists = nx.get_node_attributes(self.graph, 'seen')
-		return [artist for artist in unique_artists if artist.id not in seen_artists]
-
 	def track_with_artists_from_response(self, response: Dict[str, Any]):
 		return (
 			self.track_from_response(response),
@@ -230,7 +210,7 @@ class Network:
 
 	def artist_from_response(self, response: Dict[str, Any], seen: bool = False) -> Artist:
 		attr = {'popularity': response.get('popularity'), 'genres': response.get('genres')}
-		if seen or response['id'] in nx.get_node_attributes(self.graph, 'seen'):
+		if seen or response['id'] in self.graph.get_node_attributes('seen'):
 			attr['seen'] = True
 
 		return Artist(artist_id=response['id'], name=response['name'], attr=attr)
