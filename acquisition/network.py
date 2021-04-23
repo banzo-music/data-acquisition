@@ -1,6 +1,6 @@
 import json
 import traceback
-from typing import List, Dict, Any, Tuple
+from typing import Any, Dict, List, Tuple, Union
 
 from spotipy import Spotify
 import networkx as nx
@@ -12,11 +12,50 @@ from .track import Track
 
 
 class Network:
-	def __init__(self, spotify: Spotify, audio_features: List[str], max_tracks: int):
+	def __init__(self, spotify: Spotify, audio_features: List[str], max_tracks: int, graph: nx.Graph = None):
 		self.spotify = spotify
 		self.graph = nx.Graph()
+		if graph:
+			self.graph = graph
 		self.audio_features = audio_features
 		self.max_tracks = max_tracks
+
+	@classmethod
+	def from_dataframe(
+			cls,
+			spotify: Spotify,
+			audio_features: List[str],
+			max_tracks: int,
+			vertices: pd.DataFrame,
+			edges: pd.DataFrame
+	):
+		graph = nx.from_pandas_edgelist(edges)
+		records = vertices.to_dict('records')
+		for record in records:
+			attr = {}
+			for k, v in record.items():
+				if 'attr' in k:
+					attr[k.replace("attr.", "")] = v
+
+			if record['node_type'] == 'track':
+				graph.add_node(record['id'], track=Track(
+					track_id=record['id'],
+					name=record['name'],
+					album=record['album'],
+					album_type=record['album_type'],
+					attr=attr
+				))
+			elif record['node_type'] == 'artist':
+				graph.add_node(record['id'], artist=Artist(
+					artist_id=record['id'],
+					name=record['name'],
+					attr=attr
+				))
+			else:
+				print("weird node found; skipping")
+				continue
+
+		return cls(graph=graph, spotify=spotify, audio_features=audio_features, max_tracks=max_tracks)
 
 	def search_tracks(self, artist_name: str, seen: bool = False) -> List[Tuple[Track, List[Artist]]]:
 		tracks = {}
@@ -46,7 +85,7 @@ class Network:
 
 		return list(tracks.values())
 
-	def top_tracks(self, artist: Artist, seen: bool = False) -> List[Tuple[Track, List[Artist]]]:
+	def get_top_tracks(self, artist: Artist, seen: bool = False) -> List[Tuple[Track, List[Artist]]]:
 		try:
 			results = self.spotify.artist_top_tracks(artist.id)
 		except Exception as e:
@@ -76,7 +115,7 @@ class Network:
 					self.graph.add_node(artist.id, artist=artist)
 				self.graph.add_edge(track.id, artist.id)
 
-	def related_artists(self, artist: Artist, seen: bool = False) -> List[Artist]:
+	def get_related_artists(self, artist: Artist, seen: bool = False) -> List[Artist]:
 		try:
 			results = self.spotify.artist_related_artists(artist.id)
 		except Exception as e:
@@ -86,12 +125,11 @@ class Network:
 			)
 			return []
 
-		if results['artists']:
-			return [self.artist_from_response(artist, seen) for artist in results['artists']]
-		else:
+		if not results['artists']:
 			return []
+		return [self.artist_from_response(artist, seen) for artist in results['artists']]
 
-	def get_audio_features(self, tracks: List[Track]):
+	def put_audio_features(self, tracks: List[Track]):
 		n = 100
 		batches = [tracks[i * n:(i+1) * n] for i in range((len(tracks) + n-1) // n)]
 
@@ -113,15 +151,19 @@ class Network:
 				continue
 
 			for result in results:
-				if result:
-					track_id = result['id']
-					if track_id in tracks_map:
-						audio_features = {}
-						for name in self.audio_features:
-							audio_features[name] = result.get(name)
-						tracks_map[track_id].set_attrs(audio_features)
+				if not result:
+					continue
 
-	def get_playlist(self, playlist_id: str) -> Playlist:
+				track_id = result['id']
+				if track_id not in tracks_map:
+					continue
+
+				audio_features = {}
+				for name in self.audio_features:
+					audio_features[name] = result.get(name)
+				tracks_map[track_id].set_attrs(audio_features)
+
+	def get_playlist(self, playlist_id: str) -> Union[Playlist, None]:
 		try:
 			playlist = self.spotify.playlist(playlist_id=playlist_id)
 		except Exception as e:
@@ -129,7 +171,7 @@ class Network:
 				f"exception while getting playlist, skipping playlist ({playlist_id}):\n",
 				format_traceback(e)
 			)
-			return Playlist(playlist_id='', name='', entries=[])
+			return
 
 		playlist_name = playlist['name']
 		total_tracks = playlist['tracks']['total']
@@ -138,33 +180,35 @@ class Network:
 		offset = 0
 		limit = 50
 		while offset <= total_tracks:
-			try:
-				results = self.spotify.playlist_tracks(playlist_id=playlist_id, offset=offset, limit=limit)
-			except Exception as e:
-				print(
-					f"exception while getting playlist tracks, skipping batch of tracks ({playlist_id}):\n",
-					format_traceback(e)
-				)
-				offset += limit
-				continue
-
+			results = self.get_playlist_tracks(playlist_id, offset, limit)
 			offset += limit
+
+			if not results:
+				continue
 			if len(results['items']) <= 0 or not results['items'][0]:
 				break
 
 			for result in results['items']:
-				if result['track']:
-					track = result['track']
-					entries[track['name']] = (
-						self.track_from_response(track),
-						[self.artist_from_response(artist) for artist in track['artists']]
-					)
+				if not result['track']:
+					continue
+				track = result['track']
+				entries[track['name']] = self.track_with_artists_from_response(result['track'])
 
 		return Playlist(
 			playlist_id=playlist_id,
 			name=playlist_name,
 			entries=list(entries.values())
-		)			
+		)
+
+	def get_playlist_tracks(self, playlist_id: str, offset: int, limit: int) -> Dict[str, Any]:
+		try:
+			return self.spotify.playlist_tracks(playlist_id=playlist_id, offset=offset, limit=limit)
+		except Exception as e:
+			print(
+				f"exception while getting playlist tracks, skipping batch of tracks ({playlist_id}):\n",
+				format_traceback(e)
+			)
+			return {}
 
 	def to_dataframe(self) -> (pd.DataFrame, pd.DataFrame):
 		tracks = [track.__dict__ for track in nx.get_node_attributes(self.graph, 'track').values()]
@@ -173,51 +217,23 @@ class Network:
 		edges = nx.to_pandas_edgelist(self.graph)
 		return vertices, edges
 
-	def from_dataframe(self, vertices: pd.DataFrame, edges: pd.DataFrame):
-		graph = nx.from_pandas_edgelist(edges)
-		records = vertices.to_dict('records')
-		for record in records:
-			attr = {}
-			for k, v in record.items():
-				if 'attr' in k:
-					attr[k.replace("attr.", "")] = v
-
-			if record['node_type'] == 'track':
-				graph.add_node(record['id'], track=Track(
-					track_id=record['id'],
-					name=record['name'],
-					album=record['album'],
-					album_type=record['album_type'],
-					attr=attr
-				))
-			elif record['node_type'] == 'artist':
-				graph.add_node(record['id'], artist=Artist(
-					artist_id=record['id'],
-					name=record['name'],
-					attr=attr
-				))
-			else:
-				print("weird node found; skipping")
-				continue
-
-		self.graph = graph
-
 	def unseen_artists(self, artists: List[Artist]) -> List[Artist]:
 		unique_artists = list(set(artists))
 		seen_artists = nx.get_node_attributes(self.graph, 'seen')
 		return [artist for artist in unique_artists if artist.id not in seen_artists]
 
-	def artist_from_response(self, response: Dict[str, Any], seen: bool = False) -> Artist:
-		attr = {
-			'popularity': response.get('popularity'),
-			'genres': response.get('genres')
-		}
+	def track_with_artists_from_response(self, response: Dict[str, Any]):
+		return (
+			self.track_from_response(response),
+			[self.artist_from_response(artist) for artist in response['artists']]
+		)
 
+	def artist_from_response(self, response: Dict[str, Any], seen: bool = False) -> Artist:
+		attr = {'popularity': response.get('popularity'), 'genres': response.get('genres')}
 		if seen or response['id'] in nx.get_node_attributes(self.graph, 'seen'):
 			attr['seen'] = True
 
-		artist = Artist(artist_id=response['id'], name=response['name'], attr=attr)
-		return artist
+		return Artist(artist_id=response['id'], name=response['name'], attr=attr)
 
 	@staticmethod
 	def track_from_response(response: Dict[str, Any]) -> Track:
