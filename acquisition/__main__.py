@@ -44,7 +44,7 @@ def main():
         add_artists(network, playlist.get_artists(), 0, 2)
 
         print(f"Writing {len(network.graph.nodes)} nodes and {len(network.graph.edges())} edges to file")
-        vertices, edges = network.to_dataframe()
+        vertices, edges = network.graph.to_dataframe()
         vertices.to_csv(f"vertices_{name}.csv", index=False)
         edges.to_csv(f"edges_{name}.csv", index=False)
         print(f"Completed: {time.time() - start_time}")
@@ -54,7 +54,7 @@ def add_artists(network: Network, seed_artists: List[Artist], curr_depth: int, m
     if curr_depth == max_depth or len(seed_artists) <= 0:
         return
 
-    unseen_seed_artists = network.unseen_artists(seed_artists)
+    unseen_seed_artists = network.graph.get_unseen_artists(seed_artists)
     print(f"{len(unseen_seed_artists)} unseen artists in layer {curr_depth} of network")
 
     next_seed_artists = []
@@ -76,7 +76,7 @@ def add_artist(network: Network, seed_artist: Artist):
         for artist in artists:
             collaborators[artist.name] = artist
 
-    unseen_associated_artists = network.graph.unseen_artists(related_artists + list(collaborators.values()))
+    unseen_associated_artists = network.graph.get_unseen_artists(related_artists + list(collaborators.values()))
     print(
         f"Tracks: {len(found_tracks + top_tracks)}\t",
         f"Associated artists: {len(unseen_associated_artists)}\t",

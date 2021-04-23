@@ -1,3 +1,5 @@
+import random
+
 from pandas import DataFrame
 
 from acquisition.graph import Graph
@@ -50,23 +52,49 @@ class TestGraph:
         assert sorted(edges) == sorted(list(graph.edges))
 
     def test_to_dataframe(self):
-        expected = DataFrame({
+        expected_vertices = DataFrame({
             "id": ["000", "111", "222", "0001", "0002", "0003", "2222", "2223"],
             "name": ["Diddy Bop", "Yesterday", "Forever", "Noname", "Cam O'bi", "Raury", "Joseph Chilliams", "Ravyn Lenae"],
             "album": ["Telefone", "Telefone", "Telefone", None, None, None, None, None],
             "album_type": ["album", "album", "album", None, None, None, None, None],
+            "node_type": ["track", "track", "track", "artist", "artist", "artist", "artist", "artist"]
         })
 
+        expected_edges = DataFrame({
+            "source": ["000", "000", "000", "111", "222", "222", "222"],
+            "target": ["0001", "0002", "0003", "0001", "0001", "2222", "2223"],
+        })
+
+        graph = Graph()
+        for track, artists in tracks:
+            graph.put_track(track, artists)
+
+        vertices, edges = graph.to_dataframe()
+
+        assert expected_vertices.equals(vertices)
+        assert expected_edges.equals(edges)
+
+    def test_unseen_artists(self):
+        graph = Graph()
+        for track, artists in tracks:
+            graph.put_track(track, artists)
+
+        expected = [
+            Artist(artist_id="0002", name="Cam O'bi"),
+            Artist(artist_id="0003", name="Raury"),
+            Artist(artist_id="2222", name="Joseph Chilliams"),
+            Artist(artist_id="2223", name="Ravyn Lenae")
+        ]
+
+        assert expected == sorted(graph.get_unseen_artists([
+            Artist(artist_id="0001", name="Noname"),
+            Artist(artist_id="0002", name="Cam O'bi"),
+            Artist(artist_id="0003", name="Raury"),
+            Artist(artist_id="2222", name="Joseph Chilliams"),
+            Artist(artist_id="2223", name="Ravyn Lenae")
+        ]), key=lambda a: a.id)
 
 
-# 	# TODO: test this
-# 	def to_dataframe(self) -> (pd.DataFrame, pd.DataFrame):
-# 		tracks = [track.__dict__ for track in self.get_node_attributes('track').values()]
-# 		artists = [artist.__dict__ for artist in self.get_node_attributes('artist').values()]
-# 		vertices = pd.json_normalize(tracks + artists)
-# 		edges = nx.to_pandas_edgelist(self.nx_graph)
-# 		return vertices, edges
-#
 # 	# TODO: test this
 # 	def unseen_artists(self, artists: List[Artist]) -> List[Artist]:
 # 		unique_artists = list(set(artists))

@@ -8,8 +8,8 @@ from acquisition.track import Track
 
 
 class Graph:
-	def __init__(self, nx_graph: nx.Graph = None):
-		self.nx_graph = nx.Graph()
+	def __init__(self, nx_graph: nx.DiGraph = None):
+		self.nx_graph = nx.DiGraph()
 		if nx_graph:
 			self.nx_graph = nx_graph
 		self.nodes = self.nx_graph.nodes
@@ -24,7 +24,6 @@ class Graph:
 	def get_node_attributes(self, attr_name: str) -> Dict[str, Any]:
 		return nx.get_node_attributes(self.nx_graph, attr_name)
 
-	# TODO: test this
 	def to_dataframe(self) -> (pd.DataFrame, pd.DataFrame):
 		tracks = [track.__dict__ for track in self.get_node_attributes('track').values()]
 		artists = [artist.__dict__ for artist in self.get_node_attributes('artist').values()]
@@ -32,11 +31,10 @@ class Graph:
 		edges = nx.to_pandas_edgelist(self.nx_graph)
 		return vertices, edges
 
-	# TODO: test this
-	def unseen_artists(self, artists: List[Artist]) -> List[Artist]:
+	def get_unseen_artists(self, artists: List[Artist]) -> List[Artist]:
 		unique_artists = list(set(artists))
 		seen_artists = self.get_node_attributes('seen')
-		return [artist for artist in unique_artists if artist.id not in seen_artists]
+		return [artist for artist in unique_artists if artist.id not in seen_artists and artist.id not in self.nodes]
 
 	def put_track(self, track: Track, artists: List[Artist]):
 		if track.id in self.nodes:
@@ -45,8 +43,8 @@ class Graph:
 		self.add_node(track.id, track=track)
 		for artist in artists:
 			seen = artist.attr.get('seen')
-			if seen:
-				self.add_node(artist.id, artist=artist, seen=seen)
+			if seen or artist.id in self.nx_graph.nodes:
+				self.add_node(artist.id, artist=artist, seen=True)
 			else:
 				self.add_node(artist.id, artist=artist)
 			self.add_edge(track.id, artist.id)
