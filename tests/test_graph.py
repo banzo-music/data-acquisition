@@ -93,10 +93,3 @@ class TestGraph:
             Artist(artist_id="2222", name="Joseph Chilliams"),
             Artist(artist_id="2223", name="Ravyn Lenae")
         ]), key=lambda a: a.id)
-
-
-# 	# TODO: test this
-# 	def unseen_artists(self, artists: List[Artist]) -> List[Artist]:
-# 		unique_artists = list(set(artists))
-# 		seen_artists = self.get_node_attributes('seen')
-# 		return [artist for artist in unique_artists if artist.id not in seen_artists]
