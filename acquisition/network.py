@@ -38,7 +38,7 @@ class Network:
 					attr[k.replace("attr.", "")] = v
 
 			if record['node_type'] == 'track':
-				graph.add_node(record['id'], track=Track(
+				graph.add_track(Track(
 					track_id=record['id'],
 					name=record['name'],
 					album=record['album'],
@@ -46,7 +46,7 @@ class Network:
 					attr=attr
 				))
 			elif record['node_type'] == 'artist':
-				graph.add_node(record['id'], artist=Artist(
+				graph.add_artist(Artist(
 					artist_id=record['id'],
 					name=record['name'],
 					attr=attr
@@ -76,6 +76,9 @@ class Network:
 
 			offset += limit
 			total = results['tracks']['total']
+
+			if 'artists' not in results['tracks']['items']:
+				continue
 
 			for result in results['tracks']['items']:
 				if artist_name in [artist['name'] for artist in result['artists']]:

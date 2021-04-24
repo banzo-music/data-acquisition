@@ -15,8 +15,11 @@ class Graph:
 		self.nodes = self.nx_graph.nodes
 		self.edges = self.nx_graph.edges
 
-	def add_node(self, n, **attr):
-		self.nx_graph.add_node(n, **attr)
+	def add_artist(self, artist: Artist, **attr):
+		self.nx_graph.add_node(artist.id, artist=artist, **attr)
+
+	def add_track(self, track: Track, **attr):
+		self.nx_graph.add_node(track.id, track=track, **attr)
 
 	def add_edge(self, a, b, **attr):
 		self.nx_graph.add_edge(a, b, **attr)
@@ -34,17 +37,16 @@ class Graph:
 	def get_unseen_artists(self, artists: List[Artist]) -> List[Artist]:
 		unique_artists = list(set(artists))
 		seen_artists = self.get_node_attributes('seen')
-		return [artist for artist in unique_artists if artist.id not in seen_artists and artist.id not in self.nodes]
+		return [artist for artist in unique_artists if artist.id not in seen_artists]
 
 	def put_track(self, track: Track, artists: List[Artist]):
 		if track.id in self.nodes:
 			return
 
-		self.add_node(track.id, track=track)
+		self.add_track(track)
 		for artist in artists:
-			seen = artist.attr.get('seen')
-			if seen or artist.id in self.nx_graph.nodes:
-				self.add_node(artist.id, artist=artist, seen=True)
+			if artist.attr.get('seen') or artist.id in self.nx_graph.nodes:
+				self.add_artist(artist, seen=True)
 			else:
-				self.add_node(artist.id, artist=artist)
+				self.add_artist(artist)
 			self.add_edge(track.id, artist.id)

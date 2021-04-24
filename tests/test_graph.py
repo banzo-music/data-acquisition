@@ -52,6 +52,7 @@ class TestGraph:
         assert sorted(edges) == sorted(list(graph.edges))
 
     def test_to_dataframe(self):
+        # setup
         expected_vertices = DataFrame({
             "id": ["000", "111", "222", "0001", "0002", "0003", "2222", "2223"],
             "name": ["Diddy Bop", "Yesterday", "Forever", "Noname", "Cam O'bi", "Raury", "Joseph Chilliams", "Ravyn Lenae"],
@@ -69,12 +70,14 @@ class TestGraph:
         for track, artists in tracks:
             graph.put_track(track, artists)
 
+        # run test
         vertices, edges = graph.to_dataframe()
 
         assert expected_vertices.equals(vertices)
         assert expected_edges.equals(edges)
 
     def test_unseen_artists(self):
+        # setup
         graph = Graph()
         for track, artists in tracks:
             graph.put_track(track, artists)
@@ -86,6 +89,7 @@ class TestGraph:
             Artist(artist_id="2223", name="Ravyn Lenae")
         ]
 
+        # run test
         assert expected == sorted(graph.get_unseen_artists([
             Artist(artist_id="0001", name="Noname"),
             Artist(artist_id="0002", name="Cam O'bi"),
