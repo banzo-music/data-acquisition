@@ -1,5 +1,7 @@
 # data-acquisition 
 
+![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/v/release/banzo-music/data-acquisition?include_prereleases)
+
 Python application to collect artist and track data by leveraging networkx, spotipy, and the LastFM API.
 
 ## Prerequisites
